@@ -79,16 +79,20 @@
             align-items: center;
         }
 
-        /* Inputs */
+        /* Inputs Grid */
         .unit-group {
-            display: flex;
-            flex-direction: column;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
             gap: 12px;
         }
 
         .input-wrapper {
             display: flex;
             flex-direction: column;
+        }
+
+        .input-wrapper.full-width {
+            grid-column: span 2;
         }
 
         label {
@@ -107,6 +111,8 @@
             transition: 0.2s;
             background: var(--accent);
             font-family: 'SF Mono', monospace;
+            width: 100%;
+            box-sizing: border-box;
         }
 
         .unit-input:focus,
@@ -126,9 +132,9 @@
             list-style: none;
             padding: 0;
             margin: 0;
-            max-height: 100px;
+            max-height: 120px;
             overflow-y: auto;
-            font-size: 0.8rem;
+            font-size: 0.7rem;
         }
 
         .history-item {
@@ -146,6 +152,8 @@
             background: var(--accent);
             padding: 2px 8px;
             border-radius: 4px;
+            flex-shrink: 0;
+            margin-left: 10px;
         }
 
         /* Buttons */
@@ -220,13 +228,21 @@
         <div class="card">
             <h2>Measurements <span>History</span></h2>
             <div class="unit-group">
+                <div class="input-wrapper full-width">
+                    <label>Meters (m)</label>
+                    <input type="number" id="m" class="unit-input" placeholder="0" step="any">
+                </div>
+                <div class="input-wrapper">
+                    <label>Centimeters (cm)</label>
+                    <input type="number" id="cm" class="unit-input" placeholder="0" step="any">
+                </div>
                 <div class="input-wrapper">
                     <label>Millimeters (mm)</label>
                     <input type="number" id="mm" class="unit-input" placeholder="0" step="any">
                 </div>
                 <div class="input-wrapper">
-                    <label>Centimeters (cm)</label>
-                    <input type="number" id="cm" class="unit-input" placeholder="0" step="any">
+                    <label>Inches (in)</label>
+                    <input type="number" id="in" class="unit-input" placeholder="0" step="any">
                 </div>
                 <div class="input-wrapper">
                     <label>Feet (ft)</label>
@@ -240,8 +256,7 @@
 
         <div class="card">
             <h2>Quick Calculator <span>Live Eval</span></h2>
-            <input type="text" id="calcInput" class="calc-input" placeholder="e.g. 10 + 5 * 2"
-                spellcheck="false">
+            <input type="text" id="calcInput" class="calc-input" placeholder="e.g. 10 + 5 * 2" spellcheck="false">
             <div style="display:flex; justify-content: space-between; padding: 10px 5px; align-items: center;">
                 <span style="font-size: 0.7rem; font-weight: 800; color: #b2bec3;">RESULT</span>
                 <span id="calcResult"
@@ -265,8 +280,10 @@
     </div>
 
     <script>
-        const mmInput = document.getElementById('mm');
+        const mInput = document.getElementById('m');
         const cmInput = document.getElementById('cm');
+        const mmInput = document.getElementById('mm');
+        const inInput = document.getElementById('in');
         const ftInput = document.getElementById('ft');
         const calcInput = document.getElementById('calcInput');
         const calcResult = document.getElementById('calcResult');
@@ -281,21 +298,34 @@
             if (isNaN(val)) return;
 
             let results = {};
-            if (source === mmInput) {
-                results = { mm: val, cm: (val / 10).toFixed(2), ft: (val / 304.8).toFixed(3) };
-                cmInput.value = results.cm; ftInput.value = results.ft;
-            } else if (source === cmInput) {
-                results = { mm: (val * 10).toFixed(2), cm: val, ft: (val / 30.48).toFixed(3) };
-                mmInput.value = results.mm; ftInput.value = results.ft;
-            } else if (source === ftInput) {
-                results = { mm: (val * 304.8).toFixed(2), cm: (val * 30.48).toFixed(2), ft: val };
-                mmInput.value = results.mm; cmInput.value = results.cm;
-            }
+            let baseMM;
 
-            // Auto-save history after 1.5s of no typing
+            // Conversion to base (mm)
+            if (source === mInput) baseMM = val * 1000;
+            else if (source === cmInput) baseMM = val * 10;
+            else if (source === mmInput) baseMM = val;
+            else if (source === inInput) baseMM = val * 25.4;
+            else if (source === ftInput) baseMM = val * 304.8;
+
+            results = {
+                m: (baseMM / 1000).toFixed(4),
+                cm: (baseMM / 10).toFixed(2),
+                mm: baseMM.toFixed(2),
+                in: (baseMM / 25.4).toFixed(3),
+                ft: (baseMM / 304.8).toFixed(3)
+            };
+
+            // Sync inputs
+            if (source !== mInput) mInput.value = results.m;
+            if (source !== cmInput) cmInput.value = results.cm;
+            if (source !== mmInput) mmInput.value = results.mm;
+            if (source !== inInput) inInput.value = results.in;
+            if (source !== ftInput) ftInput.value = results.ft;
+
+            // Auto-save history
             clearTimeout(window.unitTimeout);
             window.unitTimeout = setTimeout(() => {
-                const entry = `${results.mm}mm | ${results.cm}cm | ${results.ft}ft`;
+                const entry = `${results.m}m | ${results.cm}cm | ${results.in}in | ${results.ft}ft`;
                 if (historyStore.units[0] !== entry) {
                     historyStore.units.unshift(entry);
                     renderHistory(unitHistory, historyStore.units);
@@ -303,9 +333,9 @@
             }, 1500);
         }
 
-        [mmInput, cmInput, ftInput].forEach(i => i.addEventListener('input', () => updateUnits(i)));
+        [mInput, cmInput, mmInput, inInput, ftInput].forEach(i => i.addEventListener('input', () => updateUnits(i)));
 
-        /* --- Calculator Logic (FIXED) --- */
+        /* --- Calculator Logic --- */
         function safeEval(str) {
             try {
                 // Clean the string: only allow numbers, math operators, dots, and parentheses
@@ -346,7 +376,7 @@
         function renderHistory(element, data, isCalc = false) {
             element.innerHTML = data.slice(0, 5).map(item => `
             <div class="history-item">
-                <span style="color: #636e72">${item}</span>
+                <span style="color: #636e72; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${item}</span>
                 <span class="history-val" onclick="useHistoryVal('${item}', ${isCalc})">Use</span>
             </div>
         `).join('');
@@ -359,9 +389,10 @@
                 calcInput.value = resultPart;
                 calcResult.textContent = resultPart;
             } else {
-                const mmPart = val.split('|')[0].replace('mm', '').trim();
-                mmInput.value = mmPart;
-                updateUnits(mmInput);
+                // If it's a unit record, we extract the first value (meters)
+                const mPart = val.split('|')[0].replace('m', '').trim();
+                mInput.value = mPart;
+                updateUnits(mInput);
             }
         }
 
@@ -381,6 +412,7 @@
             unitHistory.innerHTML = '';
             calcHistory.innerHTML = '';
             calcResult.textContent = '0';
+            [mInput, cmInput, mmInput, inInput, ftInput].forEach(i => i.value = '');
         }
 
         /* --- QR Code --- */
